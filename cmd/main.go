@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Olamigokeolowo/projectflow-demo/internal/decision"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/gin-gonic/gin"
 )
 

@@ -1,4 +1,4 @@
-module github.com/Olamigokeolowo/projectflow-demo
+module github.com/Olamigokeolowo/projectflow-backend
 
 go 1.26.5
 
