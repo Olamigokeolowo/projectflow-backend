@@ -1,14 +1,16 @@
 package main
 
 import (
-	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/gin-gonic/gin"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 )
 
 func main() {
 	r := gin.Default()
 
-	decisionHandler := decision.NewHandler()
+	repo := decision.NewInMemoryRepository()
+	service := decision.NewService(repo)
+	decisionHandler := decision.NewHandler(service)
 
 	v1 := r.Group("/api/v1")
 	{
