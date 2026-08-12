@@ -40,10 +40,7 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 func (h *Handler) Create(c *gin.Context) {
-	var req struct {
-		Title  string `json:"title"`
-		Status string `json:"status"`
-	}
+	var req CreateDecisionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
