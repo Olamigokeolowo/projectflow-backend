@@ -3,10 +3,15 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
 )
 
 func main() {
-	r := gin.Default()
+	r := gin.New() // switched from gin.Default() so we control the middleware stack explicitly
+
+	r.Use(gin.Recovery())
+	r.Use(middleware.RequestID())
+	r.Use(middleware.Logger())
 
 	repo := decision.NewInMemoryRepository()
 	service := decision.NewService(repo)
