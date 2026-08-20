@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
+	"context"
+
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -14,8 +17,12 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 
+	ctx := context.Background()
+	queue := events.NewInMemoryQueue(100)
+	events.StartWorker(ctx, queue)
+
 	decisionRepo := decision.NewInMemoryRepository()
-	decisionService := decision.NewService(decisionRepo)
+	decisionService := decision.NewService(decisionRepo, queue)
 	decisionHandler := decision.NewHandler(decisionService)
 
 	userRepo := user.NewInMemoryRepository()
@@ -31,7 +38,7 @@ func main() {
 		}
 
 		decisions := v1.Group("/decisions")
-		decisions.Use(middleware.AuthRequired()) // everything below this line requires a valid token
+		decisions.Use(middleware.AuthRequired())
 		{
 			decisions.GET("", decisionHandler.List)
 			decisions.GET("/:id", decisionHandler.Get)
