@@ -37,6 +37,7 @@ func main() {
 			decisions.GET("/:id", decisionHandler.Get)
 			decisions.POST("", decisionHandler.Create)
 			decisions.GET("/:id/tasks", decisionHandler.ListTasks)
+			decisions.GET("/slow", decisionHandler.SlowOperation)
 		}
 	}
 

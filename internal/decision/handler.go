@@ -26,14 +26,18 @@ func (h *Handler) List(c *gin.Context) {
 
 func (h *Handler) Get(c *gin.Context) {
 	id := c.Param("id")
+	userID := c.GetString("user_id") // set by AuthRequired middleware
 
-	d, err := h.service.Get(c.Request.Context(), id)
+	d, err := h.service.Get(c.Request.Context(), id, userID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		switch {
+		case errors.Is(err, ErrNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "decision not found"})
-			return
+		case errors.Is(err, ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this decision"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get decision"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get decision"})
 		return
 	}
 	c.JSON(http.StatusOK, d)
@@ -46,7 +50,9 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	d, err := h.service.Create(c.Request.Context(), req.Title, req.Status)
+	userID := c.GetString("user_id") // set by AuthRequired middleware
+
+	d, err := h.service.Create(c.Request.Context(), req.Title, req.Status, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create decision"})
 		return
@@ -57,4 +63,13 @@ func (h *Handler) Create(c *gin.Context) {
 func (h *Handler) ListTasks(c *gin.Context) {
 	id := c.Param("id")
 	c.JSON(http.StatusOK, gin.H{"decision_id": id, "tasks": []string{}})
+}
+
+func (h *Handler) SlowOperation(c *gin.Context) {
+	err := h.service.SlowOperation(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "request cancelled or timed out"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "slow operation completed"})
 }
