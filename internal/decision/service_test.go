@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,7 +14,7 @@ func TestService_List(t *testing.T) {
 			return []*Decision{{ID: "1", Title: "Test Decision"}}, nil
 		},
 	}
-	service := NewService(repo)
+	service := NewService(repo, &mockPublisher{}, newMockCache())
 
 	decisions, err := service.List(context.Background())
 
@@ -28,7 +29,7 @@ func TestService_Get_Success(t *testing.T) {
 			return &Decision{ID: id, OwnerID: "user-123"}, nil
 		},
 	}
-	service := NewService(repo)
+	service := NewService(repo, &mockPublisher{}, newMockCache())
 
 	d, err := service.Get(context.Background(), "decision-1", "user-123")
 
@@ -42,7 +43,7 @@ func TestService_Get_Forbidden(t *testing.T) {
 			return &Decision{ID: id, OwnerID: "user-123"}, nil // owned by a different user
 		},
 	}
-	service := NewService(repo)
+	service := NewService(repo, &mockPublisher{}, newMockCache())
 
 	_, err := service.Get(context.Background(), "decision-1", "user-999") // different requester
 
@@ -55,7 +56,7 @@ func TestService_Get_NotFound(t *testing.T) {
 			return nil, ErrNotFound
 		},
 	}
-	service := NewService(repo)
+	service := NewService(repo, &mockPublisher{}, newMockCache())
 
 	_, err := service.Get(context.Background(), "missing-id", "user-123")
 
@@ -68,11 +69,34 @@ func TestService_Create(t *testing.T) {
 			return &Decision{ID: "new-id", Title: title, Status: status, OwnerID: ownerID}, nil
 		},
 	}
-	service := NewService(repo)
+	service := NewService(repo, &mockPublisher{}, newMockCache())
 
 	d, err := service.Create(context.Background(), "New Decision", "draft", "user-123")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "New Decision", d.Title)
 	assert.Equal(t, "user-123", d.OwnerID)
+}
+
+func TestService_Create_PublishesEvent(t *testing.T) {
+	var published bool
+
+	repo := &mockRepository{
+		createFunc: func(ctx context.Context, title, status, ownerID string) (*Decision, error) {
+			return &Decision{ID: "new-id", Title: title, Status: status, OwnerID: ownerID}, nil
+		},
+	}
+	publisher := &mockPublisher{
+		publishFunc: func(ctx context.Context, event events.DecisionCreated) error {
+			published = true
+			assert.Equal(t, "new-id", event.DecisionID)
+			return nil
+		},
+	}
+	service := NewService(repo, publisher, newMockCache())
+
+	_, err := service.Create(context.Background(), "New Decision", "draft", "user-123")
+
+	assert.NoError(t, err)
+	assert.True(t, published)
 }
