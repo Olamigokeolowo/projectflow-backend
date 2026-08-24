@@ -2,9 +2,11 @@ package decision
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 
+	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 )
 
@@ -13,10 +15,11 @@ var ErrForbidden = errors.New("you do not have access to this decision")
 type Service struct {
 	repo      Repository
 	publisher events.Publisher
+	cache     cache.Cache
 }
 
-func NewService(repo Repository, publisher events.Publisher) *Service {
-	return &Service{repo: repo, publisher: publisher}
+func NewService(repo Repository, publisher events.Publisher, c cache.Cache) *Service {
+	return &Service{repo: repo, publisher: publisher, cache: c}
 }
 
 func (s *Service) List(ctx context.Context) ([]*Decision, error) {
@@ -24,6 +27,20 @@ func (s *Service) List(ctx context.Context) ([]*Decision, error) {
 }
 
 func (s *Service) Get(ctx context.Context, id, requestingUserID string) (*Decision, error) {
+	cacheKey := "decision:" + id
+
+	if cached, found := s.cache.Get(ctx, cacheKey); found {
+		var d Decision
+		if err := json.Unmarshal([]byte(cached), &d); err == nil {
+			if d.OwnerID != requestingUserID {
+				return nil, ErrForbidden
+			}
+			log.Println("cache hit:", cacheKey)
+			return &d, nil
+		}
+	}
+
+	log.Println("cache miss:", cacheKey)
 	d, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -31,6 +48,10 @@ func (s *Service) Get(ctx context.Context, id, requestingUserID string) (*Decisi
 
 	if d.OwnerID != requestingUserID {
 		return nil, ErrForbidden
+	}
+
+	if serialized, err := json.Marshal(d); err == nil {
+		s.cache.Set(ctx, cacheKey, string(serialized))
 	}
 
 	return d, nil
