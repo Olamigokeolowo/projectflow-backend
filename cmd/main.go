@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
-	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -21,8 +22,9 @@ func main() {
 	queue := events.NewInMemoryQueue(100)
 	events.StartWorker(ctx, queue)
 
+	decisionCache := cache.NewInMemoryCache()
 	decisionRepo := decision.NewInMemoryRepository()
-	decisionService := decision.NewService(decisionRepo, queue)
+	decisionService := decision.NewService(decisionRepo, queue, decisionCache)
 	decisionHandler := decision.NewHandler(decisionService)
 
 	userRepo := user.NewInMemoryRepository()
