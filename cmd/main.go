@@ -7,6 +7,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
 )
@@ -14,9 +15,11 @@ import (
 func main() {
 	r := gin.New()
 
+	metricsCollector := metrics.New()
+
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
-	r.Use(middleware.Logger())
+	r.Use(middleware.Logger(metricsCollector))
 
 	ctx := context.Background()
 	queue := events.NewInMemoryQueue(100)
@@ -30,6 +33,10 @@ func main() {
 	userRepo := user.NewInMemoryRepository()
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
+
+	r.GET("/metrics", func(c *gin.Context) {
+		c.JSON(200, metricsCollector.Snapshot())
+	})
 
 	v1 := r.Group("/api/v1")
 	{
