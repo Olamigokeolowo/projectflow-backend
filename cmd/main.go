@@ -2,6 +2,12 @@ package main
 
 import (
 	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
@@ -21,9 +27,12 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(metricsCollector))
 
-	ctx := context.Background()
+	// worker context — separate from the request-scoped ones,
+	// controls the background event worker's lifetime
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+
 	queue := events.NewInMemoryQueue(100)
-	events.StartWorker(ctx, queue)
+	events.StartWorker(workerCtx, queue)
 
 	decisionCache := cache.NewInMemoryCache()
 	decisionRepo := decision.NewInMemoryRepository()
@@ -57,5 +66,36 @@ func main() {
 		}
 	}
 
-	r.Run(":8080")
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
+
+	// run the server in a goroutine so it doesn't block the shutdown listener below
+	go func() {
+		log.Println("server starting on :8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server failed to start: %v", err)
+		}
+	}()
+
+	// block here until we receive a stop signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("shutdown signal received, starting graceful shutdown")
+
+	// give in-flight requests up to 10 seconds to finish
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("server forced to shut down: %v", err)
+	}
+
+	// now that HTTP traffic has stopped, shut down the background worker too
+	cancelWorker()
+
+	log.Println("server exited cleanly")
 }
