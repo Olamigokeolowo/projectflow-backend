@@ -16,6 +16,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/workspace"
 )
 
 func main() {
@@ -27,21 +28,23 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(metricsCollector))
 
-	// worker context — separate from the request-scoped ones,
-	// controls the background event worker's lifetime
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 
 	queue := events.NewInMemoryQueue(100)
 	events.StartWorker(workerCtx, queue)
 
-	decisionCache := cache.NewInMemoryCache()
-	decisionRepo := decision.NewInMemoryRepository()
-	decisionService := decision.NewService(decisionRepo, queue, decisionCache)
-	decisionHandler := decision.NewHandler(decisionService)
-
 	userRepo := user.NewInMemoryRepository()
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
+
+	workspaceRepo := workspace.NewInMemoryRepository()
+	workspaceService := workspace.NewService(workspaceRepo, userService)
+	workspaceHandler := workspace.NewHandler(workspaceService)
+
+	decisionCache := cache.NewInMemoryCache()
+	decisionRepo := decision.NewInMemoryRepository()
+	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService)
+	decisionHandler := decision.NewHandler(decisionService)
 
 	r.GET("/metrics", func(c *gin.Context) {
 		c.JSON(200, metricsCollector.Snapshot())
@@ -53,6 +56,15 @@ func main() {
 		{
 			auth.POST("/register", userHandler.Register)
 			auth.POST("/login", userHandler.Login)
+		}
+
+		workspaces := v1.Group("/workspaces")
+		workspaces.Use(middleware.AuthRequired())
+		{
+			workspaces.POST("", workspaceHandler.Create)
+			workspaces.GET("", workspaceHandler.List)
+			workspaces.POST("/:id/members", workspaceHandler.AddMember)
+			workspaces.GET("/:id/members", workspaceHandler.ListMembers)
 		}
 
 		decisions := v1.Group("/decisions")
@@ -71,7 +83,6 @@ func main() {
 		Handler: r,
 	}
 
-	// run the server in a goroutine so it doesn't block the shutdown listener below
 	go func() {
 		log.Println("server starting on :8080")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -79,14 +90,12 @@ func main() {
 		}
 	}()
 
-	// block here until we receive a stop signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("shutdown signal received, starting graceful shutdown")
 
-	// give in-flight requests up to 10 seconds to finish
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 
@@ -94,7 +103,6 @@ func main() {
 		log.Fatalf("server forced to shut down: %v", err)
 	}
 
-	// now that HTTP traffic has stopped, shut down the background worker too
 	cancelWorker()
 
 	log.Println("server exited cleanly")
