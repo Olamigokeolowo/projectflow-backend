@@ -40,7 +40,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*AuthRe
 func (s *Service) Login(ctx context.Context, email, password string) (*AuthResponse, error) {
 	u, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, ErrInvalidCredentials // deliberately vague — see note below
+		return nil, ErrInvalidCredentials
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
@@ -53,4 +53,12 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthRespo
 	}
 
 	return &AuthResponse{Token: token, User: u}, nil
+}
+
+func (s *Service) FindIDByEmail(ctx context.Context, email string) (string, error) {
+	u, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	return u.ID, nil
 }
