@@ -16,8 +16,15 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	decisions, err := h.service.List(c.Request.Context())
+	workspaceID := c.Query("workspace_id")
+	userID := c.GetString("user_id") // set by AuthRequired middleware
+
+	decisions, err := h.service.ListByWorkspace(c.Request.Context(), workspaceID, userID)
 	if err != nil {
+		if errors.Is(err, ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this workspace"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list decisions"})
 		return
 	}
@@ -34,7 +41,7 @@ func (h *Handler) Get(c *gin.Context) {
 		case errors.Is(err, ErrNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "decision not found"})
 		case errors.Is(err, ErrForbidden):
-			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this decision"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this workspace"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get decision"})
 		}
@@ -52,8 +59,12 @@ func (h *Handler) Create(c *gin.Context) {
 
 	userID := c.GetString("user_id") // set by AuthRequired middleware
 
-	d, err := h.service.Create(c.Request.Context(), req.Title, req.Status, userID)
+	d, err := h.service.Create(c.Request.Context(), req.Title, req.Status, userID, req.WorkspaceID)
 	if err != nil {
+		if errors.Is(err, ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this workspace"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create decision"})
 		return
 	}

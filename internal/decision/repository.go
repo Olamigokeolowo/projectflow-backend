@@ -13,10 +13,10 @@ import (
 var ErrNotFound = errors.New("decision not found")
 
 type Repository interface {
-	List(ctx context.Context) ([]*Decision, error)
+	ListByWorkspace(ctx context.Context, workspaceID string) ([]*Decision, error)
 	GetByID(ctx context.Context, id string) (*Decision, error)
-	Create(ctx context.Context, title, status, ownerID string) (*Decision, error)
-	SlowOperation(ctx context.Context) error // simulates a slow query, for demonstrating cancellation
+	Create(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error)
+	SlowOperation(ctx context.Context) error
 }
 
 // InMemoryRepository is a temporary stand-in for a real database.
@@ -31,28 +31,31 @@ func NewInMemoryRepository() *InMemoryRepository {
 	}
 }
 
-func (r *InMemoryRepository) Create(ctx context.Context, title, status, ownerID string) (*Decision, error) {
+func (r *InMemoryRepository) Create(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	d := &Decision{
-		ID:        uuid.NewString(),
-		Title:     title,
-		Status:    status,
-		OwnerID:   ownerID,
-		CreatedAt: time.Now(),
+		ID:          uuid.NewString(),
+		Title:       title,
+		Status:      status,
+		OwnerID:     ownerID,
+		WorkspaceID: workspaceID,
+		CreatedAt:   time.Now(),
 	}
 	r.data[d.ID] = d
 	return d, nil
 }
 
-func (r *InMemoryRepository) List(ctx context.Context) ([]*Decision, error) {
+func (r *InMemoryRepository) ListByWorkspace(ctx context.Context, workspaceID string) ([]*Decision, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*Decision, 0, len(r.data))
+	var result []*Decision
 	for _, d := range r.data {
-		result = append(result, d)
+		if d.WorkspaceID == workspaceID {
+			result = append(result, d)
+		}
 	}
 	return result, nil
 }
@@ -67,6 +70,7 @@ func (r *InMemoryRepository) GetByID(ctx context.Context, id string) (*Decision,
 	}
 	return d, nil
 }
+
 func (r *InMemoryRepository) SlowOperation(ctx context.Context) error {
 	select {
 	case <-time.After(5 * time.Second):

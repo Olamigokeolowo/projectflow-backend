@@ -10,20 +10,32 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 )
 
-var ErrForbidden = errors.New("you do not have access to this decision")
+var ErrForbidden = errors.New("you do not have access to this workspace")
+
+type MembershipChecker interface {
+	IsMember(ctx context.Context, workspaceID, userID string) (bool, error)
+}
 
 type Service struct {
-	repo      Repository
-	publisher events.Publisher
-	cache     cache.Cache
+	repo       Repository
+	publisher  events.Publisher
+	cache      cache.Cache
+	membership MembershipChecker
 }
 
-func NewService(repo Repository, publisher events.Publisher, c cache.Cache) *Service {
-	return &Service{repo: repo, publisher: publisher, cache: c}
+func NewService(repo Repository, publisher events.Publisher, c cache.Cache, membership MembershipChecker) *Service {
+	return &Service{repo: repo, publisher: publisher, cache: c, membership: membership}
 }
 
-func (s *Service) List(ctx context.Context) ([]*Decision, error) {
-	return s.repo.List(ctx)
+func (s *Service) ListByWorkspace(ctx context.Context, workspaceID, requestingUserID string) ([]*Decision, error) {
+	isMember, err := s.membership.IsMember(ctx, workspaceID, requestingUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+	return s.repo.ListByWorkspace(ctx, workspaceID)
 }
 
 func (s *Service) Get(ctx context.Context, id, requestingUserID string) (*Decision, error) {
@@ -32,7 +44,11 @@ func (s *Service) Get(ctx context.Context, id, requestingUserID string) (*Decisi
 	if cached, found := s.cache.Get(ctx, cacheKey); found {
 		var d Decision
 		if err := json.Unmarshal([]byte(cached), &d); err == nil {
-			if d.OwnerID != requestingUserID {
+			isMember, err := s.membership.IsMember(ctx, d.WorkspaceID, requestingUserID)
+			if err != nil {
+				return nil, err
+			}
+			if !isMember {
 				return nil, ErrForbidden
 			}
 			log.Println("cache hit:", cacheKey)
@@ -46,19 +62,30 @@ func (s *Service) Get(ctx context.Context, id, requestingUserID string) (*Decisi
 		return nil, err
 	}
 
-	if d.OwnerID != requestingUserID {
+	isMember, err := s.membership.IsMember(ctx, d.WorkspaceID, requestingUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
 		return nil, ErrForbidden
 	}
 
 	if serialized, err := json.Marshal(d); err == nil {
 		s.cache.Set(ctx, cacheKey, string(serialized))
 	}
-
 	return d, nil
 }
 
-func (s *Service) Create(ctx context.Context, title, status, ownerID string) (*Decision, error) {
-	d, err := s.repo.Create(ctx, title, status, ownerID)
+func (s *Service) Create(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error) {
+	isMember, err := s.membership.IsMember(ctx, workspaceID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
+	d, err := s.repo.Create(ctx, title, status, ownerID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +97,6 @@ func (s *Service) Create(ctx context.Context, title, status, ownerID string) (*D
 	}); pubErr != nil {
 		log.Println("failed to publish DecisionCreated event:", pubErr)
 	}
-
 	return d, nil
 }
 
