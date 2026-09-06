@@ -11,6 +11,8 @@ type mockRepository struct {
 	listByWorkspaceFunc func(ctx context.Context, workspaceID string) ([]*Decision, error)
 	getByIDFunc         func(ctx context.Context, id string) (*Decision, error)
 	createFunc          func(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error)
+	updateFunc          func(ctx context.Context, d *Decision) (*Decision, error)
+	deleteFunc          func(ctx context.Context, id string) error
 	slowOperationFunc   func(ctx context.Context) error
 }
 
@@ -24,6 +26,20 @@ func (m *mockRepository) GetByID(ctx context.Context, id string) (*Decision, err
 
 func (m *mockRepository) Create(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error) {
 	return m.createFunc(ctx, title, status, ownerID, workspaceID)
+}
+
+func (m *mockRepository) Update(ctx context.Context, d *Decision) (*Decision, error) {
+	if m.updateFunc != nil {
+		return m.updateFunc(ctx, d)
+	}
+	return d, nil
+}
+
+func (m *mockRepository) Delete(ctx context.Context, id string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, id)
+	}
+	return nil
 }
 
 func (m *mockRepository) SlowOperation(ctx context.Context) error {
@@ -73,5 +89,5 @@ func (m *mockMembershipChecker) IsMember(ctx context.Context, workspaceID, userI
 	if m.isMemberFunc != nil {
 		return m.isMemberFunc(ctx, workspaceID, userID)
 	}
-	return true, nil // default: always a member, unless a test overrides this
+	return true, nil
 }
