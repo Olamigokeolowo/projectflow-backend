@@ -16,6 +16,8 @@ type Repository interface {
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]*Decision, error)
 	GetByID(ctx context.Context, id string) (*Decision, error)
 	Create(ctx context.Context, title, status, ownerID, workspaceID string) (*Decision, error)
+	Update(ctx context.Context, d *Decision) (*Decision, error)
+	Delete(ctx context.Context, id string) error
 	SlowOperation(ctx context.Context) error
 }
 
@@ -69,6 +71,28 @@ func (r *InMemoryRepository) GetByID(ctx context.Context, id string) (*Decision,
 		return nil, ErrNotFound
 	}
 	return d, nil
+}
+
+func (r *InMemoryRepository) Update(ctx context.Context, d *Decision) (*Decision, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.data[d.ID]; !ok {
+		return nil, ErrNotFound
+	}
+	r.data[d.ID] = d
+	return d, nil
+}
+
+func (r *InMemoryRepository) Delete(ctx context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.data[id]; !ok {
+		return ErrNotFound
+	}
+	delete(r.data, id)
+	return nil
 }
 
 func (r *InMemoryRepository) SlowOperation(ctx context.Context) error {
