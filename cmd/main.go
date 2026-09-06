@@ -73,6 +73,8 @@ func main() {
 			decisions.GET("", decisionHandler.List)
 			decisions.GET("/:id", decisionHandler.Get)
 			decisions.POST("", decisionHandler.Create)
+			decisions.PATCH("/:id", decisionHandler.Update)
+			decisions.DELETE("/:id", decisionHandler.Delete)
 			decisions.GET("/:id/tasks", decisionHandler.ListTasks)
 			decisions.GET("/slow", decisionHandler.SlowOperation)
 		}
