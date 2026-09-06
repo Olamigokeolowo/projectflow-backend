@@ -11,6 +11,7 @@ import (
 )
 
 var ErrForbidden = errors.New("you do not have access to this workspace")
+var ErrNotOwner = errors.New("only the owner can modify this decision")
 
 type MembershipChecker interface {
 	IsMember(ctx context.Context, workspaceID, userID string) (bool, error)
@@ -98,6 +99,68 @@ func (s *Service) Create(ctx context.Context, title, status, ownerID, workspaceI
 		log.Println("failed to publish DecisionCreated event:", pubErr)
 	}
 	return d, nil
+}
+
+func (s *Service) Update(ctx context.Context, id, requestingUserID string, title, status *string) (*Decision, error) {
+	d, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	isMember, err := s.membership.IsMember(ctx, d.WorkspaceID, requestingUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, ErrForbidden
+	}
+
+	if d.OwnerID != requestingUserID {
+		return nil, ErrNotOwner
+	}
+
+	if title != nil {
+		d.Title = *title
+	}
+	if status != nil {
+		d.Status = *status
+	}
+
+	updated, err := s.repo.Update(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+
+	s.cache.Delete(ctx, "decision:"+id)
+
+	return updated, nil
+}
+
+func (s *Service) Delete(ctx context.Context, id, requestingUserID string) error {
+	d, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	isMember, err := s.membership.IsMember(ctx, d.WorkspaceID, requestingUserID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrForbidden
+	}
+
+	if d.OwnerID != requestingUserID {
+		return ErrNotOwner
+	}
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	s.cache.Delete(ctx, "decision:"+id)
+
+	return nil
 }
 
 func (s *Service) SlowOperation(ctx context.Context) error {
