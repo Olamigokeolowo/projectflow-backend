@@ -163,6 +163,14 @@ func (s *Service) Delete(ctx context.Context, id, requestingUserID string) error
 	return nil
 }
 
+func (s *Service) GetWorkspaceID(ctx context.Context, decisionID string) (string, error) {
+	d, err := s.repo.GetByID(ctx, decisionID)
+	if err != nil {
+		return "", err
+	}
+	return d.WorkspaceID, nil
+}
+
 func (s *Service) SlowOperation(ctx context.Context) error {
 	return s.repo.SlowOperation(ctx)
 }
