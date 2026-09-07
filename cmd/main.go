@@ -15,6 +15,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/task"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/workspace"
 )
@@ -46,6 +47,10 @@ func main() {
 	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService)
 	decisionHandler := decision.NewHandler(decisionService)
 
+	taskRepo := task.NewInMemoryRepository()
+	taskService := task.NewService(taskRepo, decisionService, workspaceService)
+	taskHandler := task.NewHandler(taskService)
+
 	r.GET("/metrics", func(c *gin.Context) {
 		c.JSON(200, metricsCollector.Snapshot())
 	})
@@ -75,8 +80,16 @@ func main() {
 			decisions.POST("", decisionHandler.Create)
 			decisions.PATCH("/:id", decisionHandler.Update)
 			decisions.DELETE("/:id", decisionHandler.Delete)
-			decisions.GET("/:id/tasks", decisionHandler.ListTasks)
 			decisions.GET("/slow", decisionHandler.SlowOperation)
+			decisions.GET("/:decisionId/tasks", taskHandler.List)
+			decisions.POST("/:decisionId/tasks", taskHandler.Create)
+		}
+
+		tasks := v1.Group("/tasks")
+		tasks.Use(middleware.AuthRequired())
+		{
+			tasks.PATCH("/:id", taskHandler.Update)
+			tasks.DELETE("/:id", taskHandler.Delete)
 		}
 	}
 
