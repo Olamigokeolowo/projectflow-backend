@@ -81,8 +81,8 @@ func main() {
 			decisions.PATCH("/:id", decisionHandler.Update)
 			decisions.DELETE("/:id", decisionHandler.Delete)
 			decisions.GET("/slow", decisionHandler.SlowOperation)
-			decisions.GET("/:decisionId/tasks", taskHandler.List)
-			decisions.POST("/:decisionId/tasks", taskHandler.Create)
+			decisions.GET("/:id/tasks", taskHandler.List)
+			decisions.POST("/:id/tasks", taskHandler.Create)
 		}
 
 		tasks := v1.Group("/tasks")
