@@ -16,7 +16,7 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	decisionID := c.Param("decisionId")
+	decisionID := c.Param("id")
 	userID := c.GetString("user_id")
 
 	tasks, err := h.service.ListByDecision(c.Request.Context(), decisionID, userID)
@@ -32,7 +32,7 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) Create(c *gin.Context) {
-	decisionID := c.Param("decisionId")
+	decisionID := c.Param("id")
 	userID := c.GetString("user_id")
 
 	var req CreateTaskRequest
