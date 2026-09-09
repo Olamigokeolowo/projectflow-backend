@@ -7,13 +7,10 @@ import (
 
 var ErrForbidden = errors.New("you do not have access to this workspace")
 
-// DecisionFinder is the narrow slice of decision.Service that task actually
-// needs — just enough to resolve which workspace a decision belongs to.
 type DecisionFinder interface {
 	GetWorkspaceID(ctx context.Context, decisionID string) (string, error)
 }
 
-// MembershipChecker mirrors the same interface decision.Service depends on.
 type MembershipChecker interface {
 	IsMember(ctx context.Context, workspaceID, userID string) (bool, error)
 }
@@ -89,4 +86,12 @@ func (s *Service) Delete(ctx context.Context, id, requestingUserID string) error
 	}
 
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *Service) GetDecisionID(ctx context.Context, taskID string) (string, error) {
+	t, err := s.repo.GetByID(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	return t.DecisionID, nil
 }
