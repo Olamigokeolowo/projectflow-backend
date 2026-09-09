@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -52,6 +53,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 
 	err := h.service.AddMember(c.Request.Context(), workspaceID, userID, req.Email)
 	if err != nil {
+		log.Println("AddMember failed:", err)
 		if errors.Is(err, ErrForbidden) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "you are not a member of this workspace"})
 			return
@@ -61,6 +63,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "member added"})
 }
+
 func (h *Handler) ListMembers(c *gin.Context) {
 	workspaceID := c.Param("id")
 	userID := c.GetString("user_id")
