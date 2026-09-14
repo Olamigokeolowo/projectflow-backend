@@ -3,6 +3,8 @@ package workspace
 import (
 	"context"
 	"errors"
+
+	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 )
 
 var ErrForbidden = errors.New("you are not a member of this workspace")
@@ -14,14 +16,20 @@ type UserFinder interface {
 type Service struct {
 	repo       Repository
 	userFinder UserFinder
+	activity   *activity.Service
 }
 
-func NewService(repo Repository, userFinder UserFinder) *Service {
-	return &Service{repo: repo, userFinder: userFinder}
+func NewService(repo Repository, userFinder UserFinder, act *activity.Service) *Service {
+	return &Service{repo: repo, userFinder: userFinder, activity: act}
 }
 
 func (s *Service) Create(ctx context.Context, name, createdBy string) (*Workspace, error) {
-	return s.repo.Create(ctx, name, createdBy)
+	w, err := s.repo.Create(ctx, name, createdBy)
+	if err != nil {
+		return nil, err
+	}
+	s.activity.Record(ctx, w.ID, createdBy, "created", "workspace", w.ID, "created workspace \""+w.Name+"\"")
+	return w, nil
 }
 
 func (s *Service) ListForUser(ctx context.Context, userID string) ([]*Workspace, error) {
@@ -41,7 +49,14 @@ func (s *Service) AddMember(ctx context.Context, workspaceID, requestingUserID, 
 	if err != nil {
 		return err
 	}
-	return s.repo.AddMember(ctx, workspaceID, targetUserID)
+
+	if err := s.repo.AddMember(ctx, workspaceID, targetUserID); err != nil {
+		return err
+	}
+
+	s.activity.Record(ctx, workspaceID, requestingUserID, "added", "member", targetUserID, "added "+email+" to the workspace")
+
+	return nil
 }
 
 func (s *Service) ListMembers(ctx context.Context, workspaceID, requestingUserID string) ([]string, error) {
@@ -58,4 +73,3 @@ func (s *Service) ListMembers(ctx context.Context, workspaceID, requestingUserID
 func (s *Service) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
 	return s.repo.IsMember(ctx, workspaceID, userID)
 }
-
