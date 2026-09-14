@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 )
@@ -22,10 +23,11 @@ type Service struct {
 	publisher  events.Publisher
 	cache      cache.Cache
 	membership MembershipChecker
+	activity   *activity.Service
 }
 
-func NewService(repo Repository, publisher events.Publisher, c cache.Cache, membership MembershipChecker) *Service {
-	return &Service{repo: repo, publisher: publisher, cache: c, membership: membership}
+func NewService(repo Repository, publisher events.Publisher, c cache.Cache, membership MembershipChecker, act *activity.Service) *Service {
+	return &Service{repo: repo, publisher: publisher, cache: c, membership: membership, activity: act}
 }
 
 func (s *Service) ListByWorkspace(ctx context.Context, workspaceID, requestingUserID string) ([]*Decision, error) {
@@ -98,6 +100,9 @@ func (s *Service) Create(ctx context.Context, title, status, ownerID, workspaceI
 	}); pubErr != nil {
 		log.Println("failed to publish DecisionCreated event:", pubErr)
 	}
+
+	s.activity.Record(ctx, workspaceID, ownerID, "created", "decision", d.ID, "created decision \""+d.Title+"\"")
+
 	return d, nil
 }
 
@@ -132,6 +137,7 @@ func (s *Service) Update(ctx context.Context, id, requestingUserID string, title
 	}
 
 	s.cache.Delete(ctx, "decision:"+id)
+	s.activity.Record(ctx, d.WorkspaceID, requestingUserID, "updated", "decision", d.ID, "updated decision \""+d.Title+"\"")
 
 	return updated, nil
 }
@@ -159,6 +165,7 @@ func (s *Service) Delete(ctx context.Context, id, requestingUserID string) error
 	}
 
 	s.cache.Delete(ctx, "decision:"+id)
+	s.activity.Record(ctx, d.WorkspaceID, requestingUserID, "deleted", "decision", d.ID, "deleted decision \""+d.Title+"\"")
 
 	return nil
 }
