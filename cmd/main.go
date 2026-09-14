@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/comment"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
@@ -38,18 +40,40 @@ func main() {
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
+	// workspaceService needs activityService, but activityService needs workspaceService
+	// (as its MembershipChecker) — build workspaceService first with a temporary nil-safe
+	// wiring pattern: activity only needs IsMember, which workspaceService already implements
+	// once constructed, so we build activity after workspace's repo/service but before
+	// workspace needs to call it. To avoid a circular dependency, workspace.Service takes
+	// *activity.Service directly (not an interface), and activity takes workspace.Service
+	// as its MembershipChecker — so we build them in this order:
 	workspaceRepo := workspace.NewInMemoryRepository()
-	workspaceService := workspace.NewService(workspaceRepo, userService)
+
+	activityRepo := activity.NewInMemoryRepository()
+
+	// temporary lightweight membership shim isn't needed — workspaceRepo itself satisfies
+	// a minimal IsMember directly, so activity can depend on workspaceRepo instead of the
+	// full workspace.Service, breaking the cycle cleanly.
+	activityService := activity.NewService(activityRepo, workspaceRepo)
+
+	workspaceService := workspace.NewService(workspaceRepo, userService, activityService)
 	workspaceHandler := workspace.NewHandler(workspaceService)
 
 	decisionCache := cache.NewInMemoryCache()
 	decisionRepo := decision.NewInMemoryRepository()
-	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService)
+	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService, activityService)
 	decisionHandler := decision.NewHandler(decisionService)
 
 	taskRepo := task.NewInMemoryRepository()
-	taskService := task.NewService(taskRepo, decisionService, workspaceService)
+	taskService := task.NewService(taskRepo, decisionService, workspaceService, activityService)
 	taskHandler := task.NewHandler(taskService)
+
+	commentResolver := comment.NewResolver(decisionService, taskService)
+	commentRepo := comment.NewInMemoryRepository()
+	commentService := comment.NewService(commentRepo, commentResolver, workspaceService, activityService)
+	commentHandler := comment.NewHandler(commentService)
+
+	activityHandler := activity.NewHandler(activityService)
 
 	r.GET("/metrics", func(c *gin.Context) {
 		c.JSON(200, metricsCollector.Snapshot())
@@ -70,6 +94,7 @@ func main() {
 			workspaces.GET("", workspaceHandler.List)
 			workspaces.POST("/:id/members", workspaceHandler.AddMember)
 			workspaces.GET("/:id/members", workspaceHandler.ListMembers)
+			workspaces.GET("/:id/activity", activityHandler.List)
 		}
 
 		decisions := v1.Group("/decisions")
@@ -83,6 +108,8 @@ func main() {
 			decisions.GET("/slow", decisionHandler.SlowOperation)
 			decisions.GET("/:id/tasks", taskHandler.List)
 			decisions.POST("/:id/tasks", taskHandler.Create)
+			decisions.GET("/:id/comments", commentHandler.ListForDecision)
+			decisions.POST("/:id/comments", commentHandler.CreateForDecision)
 		}
 
 		tasks := v1.Group("/tasks")
@@ -90,6 +117,14 @@ func main() {
 		{
 			tasks.PATCH("/:id", taskHandler.Update)
 			tasks.DELETE("/:id", taskHandler.Delete)
+			tasks.GET("/:id/comments", commentHandler.ListForTask)
+			tasks.POST("/:id/comments", commentHandler.CreateForTask)
+		}
+
+		comments := v1.Group("/comments")
+		comments.Use(middleware.AuthRequired())
+		{
+			comments.DELETE("/:id", commentHandler.Delete)
 		}
 	}
 
