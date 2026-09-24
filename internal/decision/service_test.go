@@ -4,9 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/stretchr/testify/assert"
 )
+
+func newTestActivityService() *activity.Service {
+	return activity.NewService(activity.NewInMemoryRepository(), &mockActivityMembership{})
+}
 
 func TestService_ListByWorkspace(t *testing.T) {
 	repo := &mockRepository{
@@ -15,7 +20,7 @@ func TestService_ListByWorkspace(t *testing.T) {
 		},
 	}
 	membership := &mockMembershipChecker{}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	decisions, err := service.ListByWorkspace(context.Background(), "ws-1", "user-123")
 
@@ -31,7 +36,7 @@ func TestService_Get_Success(t *testing.T) {
 		},
 	}
 	membership := &mockMembershipChecker{}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	d, err := service.Get(context.Background(), "decision-1", "user-123")
 
@@ -50,7 +55,7 @@ func TestService_Get_Forbidden(t *testing.T) {
 			return false, nil
 		},
 	}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	_, err := service.Get(context.Background(), "decision-1", "user-999")
 
@@ -64,7 +69,7 @@ func TestService_Get_NotFound(t *testing.T) {
 		},
 	}
 	membership := &mockMembershipChecker{}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	_, err := service.Get(context.Background(), "missing-id", "user-123")
 
@@ -78,7 +83,7 @@ func TestService_Create(t *testing.T) {
 		},
 	}
 	membership := &mockMembershipChecker{}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	d, err := service.Create(context.Background(), "New Decision", "draft", "user-123", "ws-1")
 
@@ -104,7 +109,7 @@ func TestService_Create_PublishesEvent(t *testing.T) {
 		},
 	}
 	membership := &mockMembershipChecker{}
-	service := NewService(repo, publisher, newMockCache(), membership)
+	service := NewService(repo, publisher, newMockCache(), membership, newTestActivityService())
 
 	_, err := service.Create(context.Background(), "New Decision", "draft", "user-123", "ws-1")
 
@@ -119,7 +124,7 @@ func TestService_Create_ForbiddenWhenNotMember(t *testing.T) {
 			return false, nil
 		},
 	}
-	service := NewService(repo, &mockPublisher{}, newMockCache(), membership)
+	service := NewService(repo, &mockPublisher{}, newMockCache(), membership, newTestActivityService())
 
 	_, err := service.Create(context.Background(), "New Decision", "draft", "user-123", "ws-1")
 

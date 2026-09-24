@@ -91,3 +91,11 @@ func (m *mockMembershipChecker) IsMember(ctx context.Context, workspaceID, userI
 	}
 	return true, nil
 }
+
+// mockActivityMembership satisfies activity.MembershipChecker, used only to
+// build a harmless real activity.Service for tests.
+type mockActivityMembership struct{}
+
+func (m *mockActivityMembership) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
+	return true, nil
+}
