@@ -13,6 +13,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/comment"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/database"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/decision"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
@@ -36,24 +37,23 @@ func main() {
 	queue := events.NewInMemoryQueue(100)
 	events.StartWorker(workerCtx, queue)
 
-	userRepo := user.NewInMemoryRepository()
+	dbConnString := os.Getenv("DATABASE_URL")
+	if dbConnString == "" {
+		dbConnString = "postgres://projectflow:devpassword@localhost:5432/projectflow"
+	}
+	dbPool, err := database.Connect(context.Background(), dbConnString)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer dbPool.Close()
+
+	userRepo := user.NewPostgresRepository(dbPool)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	// workspaceService needs activityService, but activityService needs workspaceService
-	// (as its MembershipChecker) — build workspaceService first with a temporary nil-safe
-	// wiring pattern: activity only needs IsMember, which workspaceService already implements
-	// once constructed, so we build activity after workspace's repo/service but before
-	// workspace needs to call it. To avoid a circular dependency, workspace.Service takes
-	// *activity.Service directly (not an interface), and activity takes workspace.Service
-	// as its MembershipChecker — so we build them in this order:
 	workspaceRepo := workspace.NewInMemoryRepository()
 
 	activityRepo := activity.NewInMemoryRepository()
-
-	// temporary lightweight membership shim isn't needed — workspaceRepo itself satisfies
-	// a minimal IsMember directly, so activity can depend on workspaceRepo instead of the
-	// full workspace.Service, breaking the cycle cleanly.
 	activityService := activity.NewService(activityRepo, workspaceRepo)
 
 	workspaceService := workspace.NewService(workspaceRepo, userService, activityService)
