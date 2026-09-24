@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/comment"
@@ -21,6 +20,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/task"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/workspace"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	workspaceRepo := workspace.NewInMemoryRepository()
+	workspaceRepo := workspace.NewPostgresRepository(dbPool)
 
 	activityRepo := activity.NewInMemoryRepository()
 	activityService := activity.NewService(activityRepo, workspaceRepo)
