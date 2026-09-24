@@ -53,23 +53,23 @@ func main() {
 
 	workspaceRepo := workspace.NewPostgresRepository(dbPool)
 
-	activityRepo := activity.NewInMemoryRepository()
+	activityRepo := activity.NewPostgresRepository(dbPool)
 	activityService := activity.NewService(activityRepo, workspaceRepo)
 
 	workspaceService := workspace.NewService(workspaceRepo, userService, activityService)
 	workspaceHandler := workspace.NewHandler(workspaceService)
 
 	decisionCache := cache.NewInMemoryCache()
-	decisionRepo := decision.NewInMemoryRepository()
+	decisionRepo := decision.NewPostgresRepository(dbPool)
 	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService, activityService)
 	decisionHandler := decision.NewHandler(decisionService)
 
-	taskRepo := task.NewInMemoryRepository()
+	taskRepo := task.NewPostgresRepository(dbPool)
 	taskService := task.NewService(taskRepo, decisionService, workspaceService, activityService)
 	taskHandler := task.NewHandler(taskService)
 
 	commentResolver := comment.NewResolver(decisionService, taskService)
-	commentRepo := comment.NewInMemoryRepository()
+	commentRepo := comment.NewPostgresRepository(dbPool)
 	commentService := comment.NewService(commentRepo, commentResolver, workspaceService, activityService)
 	commentHandler := comment.NewHandler(commentService)
 
