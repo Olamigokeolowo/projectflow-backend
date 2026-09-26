@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/activity"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/cache"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/comment"
@@ -20,7 +21,6 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/task"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/workspace"
-	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -34,9 +34,22 @@ func main() {
 
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 
-	queue := events.NewInMemoryQueue(100)
-	events.StartWorker(workerCtx, queue)
+	// --- RabbitMQ (replaces the in-memory queue) ---
+	rabbitURL := os.Getenv("RABBITMQ_URL")
+	if rabbitURL == "" {
+		rabbitURL = "amqp://guest:guest@localhost:5672/"
+	}
+	queue, err := events.NewRabbitMQQueue(rabbitURL)
+	if err != nil {
+		log.Fatalf("failed to connect to RabbitMQ: %v", err)
+	}
+	defer queue.Close()
 
+	if err := events.StartRabbitMQWorker(workerCtx, queue); err != nil {
+		log.Fatalf("failed to start RabbitMQ worker: %v", err)
+	}
+
+	// --- Postgres ---
 	dbConnString := os.Getenv("DATABASE_URL")
 	if dbConnString == "" {
 		dbConnString = "postgres://projectflow:devpassword@localhost:5432/projectflow"
@@ -59,7 +72,13 @@ func main() {
 	workspaceService := workspace.NewService(workspaceRepo, userService, activityService)
 	workspaceHandler := workspace.NewHandler(workspaceService)
 
-	decisionCache := cache.NewInMemoryCache()
+	// --- Redis (replaces the in-memory cache) ---
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	decisionCache := cache.NewRedisCache(redisAddr)
+
 	decisionRepo := decision.NewPostgresRepository(dbPool)
 	decisionService := decision.NewService(decisionRepo, queue, decisionCache, workspaceService, activityService)
 	decisionHandler := decision.NewHandler(decisionService)
@@ -93,6 +112,7 @@ func main() {
 			workspaces.POST("", workspaceHandler.Create)
 			workspaces.GET("", workspaceHandler.List)
 			workspaces.POST("/:id/members", workspaceHandler.AddMember)
+			workspaces.DELETE("/:id/members/:userId", workspaceHandler.RemoveMember)
 			workspaces.GET("/:id/members", workspaceHandler.ListMembers)
 			workspaces.GET("/:id/activity", activityHandler.List)
 		}
