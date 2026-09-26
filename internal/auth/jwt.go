@@ -2,13 +2,23 @@ package auth
 
 import (
 	"errors"
+	"log"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// In real production, this comes from an environment variable, never hardcoded.
-var jwtSecret = []byte("temporary-dev-secret-change-me")
+var jwtSecret = loadSecret()
+
+func loadSecret() []byte {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Println("WARNING: JWT_SECRET not set, using insecure development fallback")
+		secret = "temporary-dev-secret-change-me"
+	}
+	return []byte(secret)
+}
 
 var ErrInvalidToken = errors.New("invalid or expired token")
 
@@ -25,20 +35,17 @@ func GenerateToken(userID string) (string, error) {
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
 }
 
 func ValidateToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
-
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		return jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
 		return nil, ErrInvalidToken
 	}
-
 	return claims, nil
 }
