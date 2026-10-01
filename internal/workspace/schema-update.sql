@@ -1,0 +1,1 @@
+ALTER TABLE workspace_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';

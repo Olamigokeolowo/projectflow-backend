@@ -35,8 +35,8 @@ func (r *PostgresRepository) Create(ctx context.Context, name, createdBy string)
 	}
 
 	_, err = tx.Exec(ctx,
-		`INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)`,
-		w.ID, createdBy,
+		`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)`,
+		w.ID, createdBy, RoleAdmin,
 	)
 	if err != nil {
 		return nil, err
@@ -91,11 +91,25 @@ func (r *PostgresRepository) ListForUser(ctx context.Context, userID string) ([]
 
 func (r *PostgresRepository) AddMember(ctx context.Context, workspaceID, userID string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)
+		`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)
 		 ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-		workspaceID, userID,
+		workspaceID, userID, RoleMember,
 	)
 	return err
+}
+
+func (r *PostgresRepository) RemoveMember(ctx context.Context, workspaceID, userID string) error {
+	cmdTag, err := r.pool.Exec(ctx,
+		`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+		workspaceID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *PostgresRepository) IsMember(ctx context.Context, workspaceID, userID string) (bool, error) {
@@ -109,9 +123,26 @@ func (r *PostgresRepository) IsMember(ctx context.Context, workspaceID, userID s
 	return exists, err
 }
 
-func (r *PostgresRepository) ListMembers(ctx context.Context, workspaceID string) ([]string, error) {
+func (r *PostgresRepository) GetRole(ctx context.Context, workspaceID, userID string) (string, error) {
+	var role string
+	err := r.pool.QueryRow(ctx,
+		`SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+		workspaceID, userID,
+	).Scan(&role)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return role, nil
+}
+
+func (r *PostgresRepository) ListMembers(ctx context.Context, workspaceID string) ([]*Membership, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT user_id::text FROM workspace_members WHERE workspace_id = $1`,
+		`SELECT user_id::text, workspace_id::text, role, joined_at
+		 FROM workspace_members WHERE workspace_id = $1`,
 		workspaceID,
 	)
 	if err != nil {
@@ -119,13 +150,13 @@ func (r *PostgresRepository) ListMembers(ctx context.Context, workspaceID string
 	}
 	defer rows.Close()
 
-	var members []string
+	var members []*Membership
 	for rows.Next() {
-		var userID string
-		if err := rows.Scan(&userID); err != nil {
+		var m Membership
+		if err := rows.Scan(&m.UserID, &m.WorkspaceID, &m.Role, &m.JoinedAt); err != nil {
 			return nil, err
 		}
-		members = append(members, userID)
+		members = append(members, &m)
 	}
 	return members, rows.Err()
 }

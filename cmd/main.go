@@ -18,6 +18,7 @@ import (
 	"github.com/Olamigokeolowo/projectflow-backend/internal/events"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/metrics"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/middleware"
+	"github.com/Olamigokeolowo/projectflow-backend/internal/search"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/task"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/user"
 	"github.com/Olamigokeolowo/projectflow-backend/internal/workspace"
@@ -32,9 +33,12 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(metricsCollector))
 
+	authLimiter := middleware.NewRateLimiter(5, time.Minute)
+	generalLimiter := middleware.NewRateLimiter(100, time.Minute)
+	r.Use(middleware.RateLimit(generalLimiter))
+
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 
-	// --- RabbitMQ (replaces the in-memory queue) ---
 	rabbitURL := os.Getenv("RABBITMQ_URL")
 	if rabbitURL == "" {
 		rabbitURL = "amqp://guest:guest@localhost:5672/"
@@ -49,7 +53,6 @@ func main() {
 		log.Fatalf("failed to start RabbitMQ worker: %v", err)
 	}
 
-	// --- Postgres ---
 	dbConnString := os.Getenv("DATABASE_URL")
 	if dbConnString == "" {
 		dbConnString = "postgres://projectflow:devpassword@localhost:5432/projectflow"
@@ -72,7 +75,6 @@ func main() {
 	workspaceService := workspace.NewService(workspaceRepo, userService, activityService)
 	workspaceHandler := workspace.NewHandler(workspaceService)
 
-	// --- Redis (replaces the in-memory cache) ---
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -94,13 +96,17 @@ func main() {
 
 	activityHandler := activity.NewHandler(activityService)
 
-	r.GET("/metrics", func(c *gin.Context) {
-		c.JSON(200, metricsCollector.Snapshot())
-	})
+	searchRepo := search.NewRepository(dbPool)
+	searchService := search.NewService(searchRepo, workspaceService)
+	searchHandler := search.NewHandler(searchService)
 
+r.GET("/metrics", middleware.MetricsAuth(), func(c *gin.Context) {
+	c.JSON(200, metricsCollector.Snapshot())
+})
 	v1 := r.Group("/api/v1")
 	{
 		auth := v1.Group("/auth")
+		auth.Use(middleware.RateLimit(authLimiter))
 		{
 			auth.POST("/register", userHandler.Register)
 			auth.POST("/login", userHandler.Login)
@@ -115,6 +121,7 @@ func main() {
 			workspaces.DELETE("/:id/members/:userId", workspaceHandler.RemoveMember)
 			workspaces.GET("/:id/members", workspaceHandler.ListMembers)
 			workspaces.GET("/:id/activity", activityHandler.List)
+			workspaces.GET("/:id/search", searchHandler.Search)
 		}
 
 		decisions := v1.Group("/decisions")

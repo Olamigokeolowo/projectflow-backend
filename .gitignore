@@ -1,5 +1,6 @@
 *.exe
 *.log
-.env
+.env 
 /bin
 /tmp
+echo "752a1a0730fe706f1b74ae556555bc8c" >> .env
